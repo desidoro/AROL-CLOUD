@@ -1,93 +1,80 @@
 import pandas as pd
 import json 
-def load_and_clean_data(file_path):
-    # Carica i dati
-    df = pd.read_json(file_path, lines=True)
 
-    # Espandi l'array 'samples' in righe separate
-    rows = []
-    for _, row in df.iterrows():
-        for sample in row['samples']:
-            # Converti la stringa in un dizionario se necessario
-            if isinstance(sample, str):
-                sample = json.loads(sample)
+import pandas as pd
+
+def merge_csv_files(file1, file2, output_file):
+    # Carica i due file CSV
+    df1 = pd.read_csv(file1)
+    df2 = pd.read_csv(file2)
+     
+
     
-    # Estrai i dati dal sample
-            sensor_name = sample['name'].split('_')[-1] if 'name' in sample else None
-            sensor_value = sample['value'] if 'value' in sample else None
-            sensor_time = pd.to_datetime(sample['time']['$numberLong'], unit='ms') if 'time' in sample else None
+    # Concatena i due DataFrame
+    merged_df = pd.concat([df1, df2], ignore_index=True, sort=False)
 
-            # Aggiungi al DataFrame
-            rows.append({'folder': row['folder'], 'sensor_name': sensor_name, 'sensor_value': sensor_value, 'sensor_time': sensor_time})
+    # Salva il DataFrame unito in un nuovo file CSV
+    merged_df.to_csv(output_file, index=False)
 
-    new_df = pd.DataFrame(rows)
+    print(f"File merged and saved as '{output_file}'")
 
-    return new_df
-
-# Carica il dataset
-file_path = './eqtq.json'
-df = load_and_clean_data(file_path)
-
-# Visualizza le prime righe del dataframe per conferma
-print(df.head())
-"""
+def load_and_clean_data(file_path):
     # Carica i dati
     df = pd.read_csv(file_path)
 
     # Espandi l'array 'samples' in righe separate
-    #df = df.explode('samples')
-    #print(df.head()['samples'][0])
+    df = df.explode('samples')
+    df = df.dropna(subset=['first_time', 'last_time'])
 
     # Assicurati che ogni elemento in 'samples' sia un dizionario
-    #df['samples'] = df['samples'].apply(lambda x: eval(x) if isinstance(x, str) else x)
-    samples = df.drop('samples', axis=1).join(pd.json_normalize(df['samples']).explode('samples').reset_index(drop=True))
+    df['samples'] = df['samples'].apply(lambda x: eval(x) if isinstance(x, str) else x)
 
-    #print(df['samples'])
-    # Estrai informazioni dai campi nidificati
-    def lam_name(x):
-        #print(x)
-        #print(x[0]['name'])
-        for i in x:
-            if i and i['name']:
-                return i['name'].split('_')[-1]
-        else:
-                return None
-    def lam_value(x):
-        #print(x)
-        #print(x[0]['name'])
-        for i in x:
-            if i and i['value']:
-                return i['value']
-        else:
-                return None
-    
-    def lam_time(x):
-        #print(x)
-        #print(x[0]['name'])
-        for i in x:
-            if i and i['time']:
-                
-                #return i['time']
-                return pd.to_datetime(i['time'], unit = 'ms')
-        else:
-                return None
-        
-    df['sensor_name'] = samples.apply(lam_name)
-    df['sensor_value'] = samples.apply(lam_value)
-    df['sensor_time'] = samples.apply(lam_time)
+    # Crea un nuovo dataframe per i dati espansi
+    expanded_data = []
+    for index, row in df.iterrows():
+        for sample in row['samples']:
+            if sample and 'name' in sample and 'value' in sample and 'time' in sample:
+                expanded_data.append({
+                    'type': row['folder'],
+                    '_id': row['_id'],
+                    'sensor_name': sample['name'].split('_')[-1],
+                    'sensor_value': sample['value'],
+                    'sensor_time': pd.to_datetime(sample['time'], unit='ms')
+                })
+            elif sample and 'value' in sample and 'time' in sample and row['variable']:
+                print(sample, row['variable'])
+                expanded_data.append({
+                    'type': 'PLC',
+                    '_id': row['_id'],
+                    'sensor_name': row['variable'],
+                    'sensor_value': sample['value'],
+                    'sensor_time': pd.to_datetime(sample['time'], unit='ms')
+                })
 
-    # Elimina la colonna 'samples' e altre colonne non necessarie
-    df = df.drop(columns=['samples', '_id', 'day', 'first_time', 'last_time', 'nsamples'])
+    # Crea un nuovo DataFrame dai dati espansi
+    expanded_df = pd.DataFrame(expanded_data)
 
     # Riordina le colonne se necessario
-    df = df[['sensor_time', 'folder', 'sensor_name', 'sensor_value']]
+    expanded_df = expanded_df[['sensor_time', 'sensor_name', 'sensor_value', 'type']]
 
-    return df
+    return expanded_df
 
+# Percorsi dei file sorgente
+file1 = './arol.csv'
+file2 = './arol_drive.csv'
+file3 = './arol_plc.csv'
+
+# Percorso del file di output
+output_file_1 = './merged_arol_1.csv'
+output_file_2 = './merged_arol_final.csv'
+
+# Esegui la funzione di unione
+merge_csv_files(file1, file2, output_file_1)
+merge_csv_files(output_file_1, file3, output_file_2)
 # Carica il dataset
-file_path = './arol.csv'
+file_path = output_file_2
+
 df = load_and_clean_data(file_path)
 
 # Visualizza le prime righe del dataframe per conferma
 print(df)
-"""
